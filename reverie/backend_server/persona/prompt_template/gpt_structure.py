@@ -12,6 +12,8 @@ import time
 from utils import *
 
 openai.api_key = openai_api_key
+if openai_api_base:
+  openai.api_base = openai_api_base
 
 def temp_sleep(seconds=0.1):
   time.sleep(seconds)
@@ -20,7 +22,7 @@ def ChatGPT_single_request(prompt):
   temp_sleep()
 
   completion = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo", 
+    model=openai_model_chat, 
     messages=[{"role": "user", "content": prompt}]
   )
   return completion["choices"][0]["message"]["content"]
@@ -46,7 +48,7 @@ def GPT4_request(prompt):
 
   try: 
     completion = openai.ChatCompletion.create(
-    model="gpt-4", 
+    model=openai_model_chat_gpt4, 
     messages=[{"role": "user", "content": prompt}]
     )
     return completion["choices"][0]["message"]["content"]
@@ -71,7 +73,7 @@ def ChatGPT_request(prompt):
   # temp_sleep()
   try: 
     completion = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo", 
+    model=openai_model_chat, 
     messages=[{"role": "user", "content": prompt}]
     )
     return completion["choices"][0]["message"]["content"]
@@ -208,8 +210,11 @@ def GPT_request(prompt, gpt_parameter):
   """
   temp_sleep()
   try: 
+    engine = gpt_parameter.get("engine", openai_model_completion)
+    if openai_model_completion and engine in {"text-davinci-002", "text-davinci-003"}:
+      engine = openai_model_completion
     response = openai.Completion.create(
-                model=gpt_parameter["engine"],
+                model=engine,
                 prompt=prompt,
                 temperature=gpt_parameter["temperature"],
                 max_tokens=gpt_parameter["max_tokens"],
@@ -273,7 +278,9 @@ def safe_generate_response(prompt,
   return fail_safe_response
 
 
-def get_embedding(text, model="text-embedding-ada-002"):
+def get_embedding(text, model=None):
+  if model is None:
+    model = openai_model_embedding
   text = text.replace("\n", " ")
   if not text: 
     text = "this is blank"
@@ -309,8 +316,6 @@ if __name__ == '__main__':
                                  True)
 
   print (output)
-
-
 
 
 
