@@ -6,13 +6,14 @@ Description: Wrapper functions for calling OpenAI APIs.
 """
 import json
 import random
-import openai
+from openai import OpenAI
 import time 
 
 from utils import *
-openai.api_key = openai_api_key
+_client_kwargs = {"api_key": openai_api_key}
 if openai_api_base:
-  openai.api_base = openai_api_base
+  _client_kwargs["base_url"] = openai_api_base
+client = OpenAI(**_client_kwargs)
 
 def ChatGPT_request(prompt): 
   """
@@ -28,11 +29,11 @@ def ChatGPT_request(prompt):
   """
   # temp_sleep()
   try: 
-    completion = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo", 
+    completion = client.chat.completions.create(
+    model=openai_model_chat, 
     messages=[{"role": "user", "content": prompt}]
     )
-    return completion["choices"][0]["message"]["content"]
+    return completion.choices[0].message.content
   
   except: 
     print ("ChatGPT ERROR")
@@ -64,7 +65,6 @@ Example output json:
 """
 
 print (ChatGPT_request(prompt))
-
 
 
 

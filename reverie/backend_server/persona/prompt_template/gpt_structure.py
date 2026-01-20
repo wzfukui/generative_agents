@@ -6,14 +6,22 @@ Description: Wrapper functions for calling OpenAI APIs.
 """
 import json
 import random
-import openai
+from openai import OpenAI
 import time 
 
 from utils import *
 
-openai.api_key = openai_api_key
+_client_kwargs = {"api_key": openai_api_key}
 if openai_api_base:
-  openai.api_base = openai_api_base
+  _client_kwargs["base_url"] = openai_api_base
+client = OpenAI(**_client_kwargs)
+
+def _is_chat_model(model_name):
+  if not model_name:
+    return False
+  if model_name.startswith("gpt-") and "instruct" not in model_name:
+    return True
+  return False
 
 def temp_sleep(seconds=0.1):
   time.sleep(seconds)
@@ -21,11 +29,11 @@ def temp_sleep(seconds=0.1):
 def ChatGPT_single_request(prompt): 
   temp_sleep()
 
-  completion = openai.ChatCompletion.create(
+  completion = client.chat.completions.create(
     model=openai_model_chat, 
     messages=[{"role": "user", "content": prompt}]
   )
-  return completion["choices"][0]["message"]["content"]
+  return completion.choices[0].message.content
 
 
 # ============================================================================
@@ -47,11 +55,11 @@ def GPT4_request(prompt):
   temp_sleep()
 
   try: 
-    completion = openai.ChatCompletion.create(
+    completion = client.chat.completions.create(
     model=openai_model_chat_gpt4, 
     messages=[{"role": "user", "content": prompt}]
     )
-    return completion["choices"][0]["message"]["content"]
+    return completion.choices[0].message.content
   
   except: 
     print ("ChatGPT ERROR")
@@ -72,11 +80,11 @@ def ChatGPT_request(prompt):
   """
   # temp_sleep()
   try: 
-    completion = openai.ChatCompletion.create(
+    completion = client.chat.completions.create(
     model=openai_model_chat, 
     messages=[{"role": "user", "content": prompt}]
     )
-    return completion["choices"][0]["message"]["content"]
+    return completion.choices[0].message.content
   
   except: 
     print ("ChatGPT ERROR")
@@ -213,7 +221,19 @@ def GPT_request(prompt, gpt_parameter):
     engine = gpt_parameter.get("engine", openai_model_completion)
     if openai_model_completion and engine in {"text-davinci-002", "text-davinci-003"}:
       engine = openai_model_completion
-    response = openai.Completion.create(
+    if _is_chat_model(engine):
+      response = client.chat.completions.create(
+                model=engine,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=gpt_parameter["temperature"],
+                max_tokens=gpt_parameter["max_tokens"],
+                top_p=gpt_parameter["top_p"],
+                frequency_penalty=gpt_parameter["frequency_penalty"],
+                presence_penalty=gpt_parameter["presence_penalty"],
+                stream=gpt_parameter["stream"],
+                stop=gpt_parameter["stop"])
+      return response.choices[0].message.content
+    response = client.completions.create(
                 model=engine,
                 prompt=prompt,
                 temperature=gpt_parameter["temperature"],
@@ -222,7 +242,7 @@ def GPT_request(prompt, gpt_parameter):
                 frequency_penalty=gpt_parameter["frequency_penalty"],
                 presence_penalty=gpt_parameter["presence_penalty"],
                 stream=gpt_parameter["stream"],
-                stop=gpt_parameter["stop"],)
+                stop=gpt_parameter["stop"])
     return response.choices[0].text
   except: 
     print ("TOKEN LIMIT EXCEEDED")
@@ -284,8 +304,8 @@ def get_embedding(text, model=None):
   text = text.replace("\n", " ")
   if not text: 
     text = "this is blank"
-  return openai.Embedding.create(
-          input=[text], model=model)['data'][0]['embedding']
+  return client.embeddings.create(
+          input=[text], model=model).data[0].embedding
 
 
 if __name__ == '__main__':
@@ -316,7 +336,6 @@ if __name__ == '__main__':
                                  True)
 
   print (output)
-
 
 
 
