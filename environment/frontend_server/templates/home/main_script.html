@@ -107,9 +107,9 @@
 	// <movement_speed> determines how fast we move at each upate cylce. 
 	let movement_speed = 32; 
 
-	// <timer_max> determines how frequently our update function will query the 
-	// frontend server. If it's higher, we wait longer cycles. 
-	let timer_max = 0;
+	// <timer_max> determines how frequently our update function will query the
+	// frontend server. If it's higher, we wait longer cycles.
+	let timer_max = 60;
 	let timer = timer_max;
 
 	// <phase> -- there are three phases: "process," "update," and "execute."
@@ -551,7 +551,6 @@
 	var play_button=document.getElementById("play_button");
 	var pause_button=document.getElementById("pause_button");
 </script>
-
 
 
 
