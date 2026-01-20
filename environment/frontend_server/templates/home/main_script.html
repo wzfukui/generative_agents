@@ -417,10 +417,13 @@
 	              phase = "execute";
 	            }
 	            timer = timer_max;
+	          } else {
+	            timer = timer_max;
 	          }
 	        }
 	      });
-	      update_xobj.send(JSON.stringify({"step": step, "sim_code": sim_code }));   
+	      update_xobj.send(JSON.stringify({"step": step, "sim_code": sim_code }));
+	      timer = timer_max;
 	    }
 	    timer = timer - 1; 
 	  } 
@@ -551,7 +554,6 @@
 	var play_button=document.getElementById("play_button");
 	var pause_button=document.getElementById("pause_button");
 </script>
-
 
 
 
