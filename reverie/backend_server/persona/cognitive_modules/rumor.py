@@ -119,6 +119,78 @@ def _extract_topic(convo_summary):
   return topic
 
 
+def _tone_for_persona(persona):
+  if not persona:
+    return "plain"
+  name = persona.name
+  if "黛玉" in name:
+    return "cool"
+  if "宝玉" in name:
+    return "light"
+  if "宝钗" in name:
+    return "soft"
+  return "plain"
+
+
+def _ensure_length(text, limit=80):
+  if len(text) <= limit:
+    return text
+  return text[:limit].rstrip("，。；：、 ")
+
+
+def _extract_facts_from_content(content):
+  match = re.search(r"(?:听说|有人说|都说|仿佛|只怕)?(.+?)在(.+?)[，,。]", content)
+  if match:
+    return {"who": match.group(1).strip(), "where": match.group(2).strip()}
+  return {"who": "园中人", "where": "园中"}
+
+
+def rumor_render(template, facts, tone, credibility, mutation_count):
+  who = facts.get("who", "园中人")
+  where = facts.get("where", "园中")
+  topic = facts.get("topic", "")
+
+  taboo_pool = [
+    "私下相见",
+    "夜里说话",
+    "诗稿外传",
+    "长辈不喜",
+    "私语太多",
+  ]
+  if tone == "cool":
+    taboo_pool += ["话锋带刺", "不肯低头"]
+  elif tone == "light":
+    taboo_pool += ["说笑过头", "失了分寸"]
+  elif tone == "soft":
+    taboo_pool += ["规矩难守", "不合礼数"]
+
+  taboo = random.choice(taboo_pool)
+
+  if mutation_count <= 0:
+    prefix = "听说"
+    suffix = "，未必真。"
+  elif mutation_count == 1:
+    prefix = "都说"
+    suffix = "，仿佛像是真的。"
+  else:
+    prefix = "只怕"
+    suffix = "，话已传得夸了些。"
+
+  if "仿佛" not in prefix and "仿佛" not in suffix and mutation_count == 1:
+    suffix = "，仿佛像是真的。"
+
+  core = f"{prefix}{who}在{where}，{taboo}"
+  if topic:
+    core = f"{core}，还提了{topic}"
+  content = f"{core}{suffix}"
+
+  content = world_sanitize(content)
+  if topic and len(content) > 80:
+    content = f"{prefix}{who}在{where}，{taboo}{suffix}"
+    content = world_sanitize(content)
+  return _ensure_length(content)
+
+
 def maybe_generate_rumor(init_persona, target_persona, curr_loc, convo_summary):
   base_prob = 1.0
   base_prob += _trigger_boost(convo_summary)
@@ -128,18 +200,28 @@ def maybe_generate_rumor(init_persona, target_persona, curr_loc, convo_summary):
   timestamp = init_persona.scratch.curr_time.strftime("%Y-%m-%d %H:%M:%S")
   topic = _extract_topic(convo_summary)
   location = _location_phrase(curr_loc)
-  content = f"{init_persona.name}与{target_persona.name}在{location}似乎提到{topic}"
-  content = world_sanitize(content)
+  facts = {
+    "who": f"{init_persona.name}与{target_persona.name}",
+    "where": location,
+    "topic": topic,
+  }
+  content = rumor_render("base", facts, _tone_for_persona(init_persona), 0.8, 0)
   credibility = max(0.3, 0.8 - _trigger_boost(content))
   targets = [init_persona.name, target_persona.name]
   return Rumor(content, init_persona.name, credibility, 0, targets, timestamp)
 
 
-def maybe_mutate_rumor(rumor):
+def maybe_mutate_rumor(rumor, speaker=None):
   if random.random() > 0.9:
     return rumor
-  content = _mutate_content(rumor.content)
-  content = world_sanitize(content)
+  facts = _extract_facts_from_content(rumor.content)
+  content = rumor_render(
+    "mutated",
+    facts,
+    _tone_for_persona(speaker),
+    rumor.credibility,
+    rumor.mutation_count + 1,
+  )
   credibility = max(0.1, rumor.credibility - 0.1)
   return Rumor(content, rumor.origin, credibility, rumor.mutation_count + 1, rumor.targets, rumor.timestamp)
 
@@ -174,7 +256,7 @@ def maybe_spread_rumor(speaker, listener):
   prob = 0.35 + _trigger_boost(rumor.content)
   if random.random() > min(prob, 0.6):
     return None
-  mutated = maybe_mutate_rumor(rumor)
+  mutated = maybe_mutate_rumor(rumor, speaker)
   mutated = Rumor(
     world_sanitize(mutated.content),
     mutated.origin,
@@ -188,7 +270,7 @@ def maybe_spread_rumor(speaker, listener):
 
 
 def spread_rumor_to_listener(rumor, speaker, listener):
-  mutated = maybe_mutate_rumor(rumor)
+  mutated = maybe_mutate_rumor(rumor, speaker)
   mutated = Rumor(
     world_sanitize(mutated.content),
     mutated.origin,

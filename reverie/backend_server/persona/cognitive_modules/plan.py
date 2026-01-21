@@ -925,6 +925,21 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
       f"mut={backfill_rumor.mutation_count} "
       f"content={backfill_rumor.content}"
     )
+    curr_index = target_persona.scratch.get_f_daily_schedule_index()
+    if curr_index < len(target_persona.scratch.f_daily_schedule):
+      act_desp, act_dura = target_persona.scratch.f_daily_schedule[curr_index]
+      rumor_action = rumor.maybe_influence_action(target_persona, act_desp, act_dura)
+      if rumor_action:
+        act_desp = world_sanitize(rumor_action["act_description"])
+        act_dura = rumor_action["act_duration"]
+        target_persona.scratch.f_daily_schedule[curr_index] = [act_desp, act_dura]
+        rumor_content = world_sanitize(rumor_action["rumor"].content)
+        print(
+          "RUMOR_DECISION "
+          f"persona={target_persona.name} "
+          f"rumor={rumor_content} "
+          f"action={act_desp}"
+        )
 
   spread_rumor = rumor.maybe_spread_rumor(init_persona, target_persona)
   if spread_rumor:
