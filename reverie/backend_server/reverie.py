@@ -157,6 +157,28 @@ class ReverieServer:
       self.maze.tiles[p_y][p_x]["events"].add(curr_persona.scratch
                                               .get_curr_event_and_desc())
 
+    history_init = reverie_meta.get("history_init_file")
+    if history_init:
+      history_path = os.path.join(maze_assets_loc, history_init)
+      if os.path.exists(history_path):
+        for persona in self.personas.values():
+          persona.scratch.curr_time = self.curr_time
+        rows = read_file_to_list(history_path, header=True,
+                                 strip_trail=True)[1]
+        clean_whispers = []
+        for row in rows:
+          agent_name = row[0].strip()
+          whispers = [w.strip() for w in row[1].split(";")]
+          for whisper in whispers:
+            if whisper:
+              clean_whispers += [[agent_name, whisper]]
+        load_history_via_whisper(self.personas, clean_whispers)
+        for persona in self.personas.values():
+          persona.scratch.curr_time = None
+        print(f"Loaded history seeds from {history_init}.")
+      else:
+        print(f"History seed file not found: {history_init}")
+
     # REVERIE SETTINGS PARAMETERS:  
     # <server_sleep> denotes the amount of time that our while loop rests each
     # cycle; this is to not kill our machine. 
@@ -636,9 +658,6 @@ if __name__ == '__main__':
 
   rs = ReverieServer(origin, target)
   rs.open_server()
-
-
-
 
 
 
