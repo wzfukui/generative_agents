@@ -16,6 +16,7 @@ from persona.prompt_template.run_gpt_prompt import *
 from persona.cognitive_modules.retrieve import *
 from persona.cognitive_modules.converse import *
 from persona.cognitive_modules import rumor
+from persona.cognitive_modules import scene
 from text_sanitize import world_sanitize
 
 ##############################################################################
@@ -892,6 +893,19 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
 
   created_rumor = rumor.maybe_generate_rumor(init_persona, target_persona,
                                              curr_loc_name, convo_summary)
+  scene_events = scene.maybe_trigger_scene(init_persona, target_persona,
+                                           curr_loc_name, convo_summary)
+  if scene_events:
+    for scene_event in scene_events:
+      for participant in [init_persona, target_persona]:
+        scene.add_scene_memory(participant, scene_event)
+      print(
+        "SCENE_TRIGGER "
+        f"type={scene_event.scene_type} "
+        f"loc={scene_event.location} "
+        f"who={','.join(scene_event.participants)} "
+        f"summary={scene_event.summary}"
+      )
   if created_rumor:
     created_for_target = rumor.prepare_rumor_for_listener(created_rumor, target_persona)
     rumor.add_rumor_memory(target_persona, created_for_target)
