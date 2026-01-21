@@ -35,14 +35,16 @@ class Rumor:
   credibility: float
   mutation_count: int
   targets: list
+  taboo_tags: list
   timestamp: str
 
   def to_memory_description(self):
     safe_targets = ",".join(self.targets) if self.targets else ""
+    safe_taboo = ",".join(self.taboo_tags) if self.taboo_tags else ""
     return (
       f"【流言】听闻{self.content}｜origin={self.origin}"
       f"｜cred={self.credibility:.2f}｜mut={self.mutation_count}"
-      f"｜targets={safe_targets}｜ts={self.timestamp}"
+      f"｜targets={safe_targets}｜taboo={safe_taboo}｜ts={self.timestamp}"
     )
 
 
@@ -62,11 +64,12 @@ def rumor_from_description(description):
     credibility = float(fields.get("cred", "0.5"))
     mutation_count = int(fields.get("mut", "0"))
     targets = [t for t in fields.get("targets", "").split(",") if t]
+    taboo_tags = [t for t in fields.get("taboo", "").split(",") if t]
     timestamp = fields.get("ts", "")
     origin = fields.get("origin", "")
   except ValueError:
     return None
-  return Rumor(content, origin, credibility, mutation_count, targets, timestamp)
+  return Rumor(content, origin, credibility, mutation_count, targets, taboo_tags, timestamp)
 
 
 def _seed_embedding(seed_text):
@@ -145,6 +148,80 @@ def _extract_facts_from_content(content):
   return {"who": "园中人", "where": "园中"}
 
 
+def _derive_taboo_tags(content):
+  tags = []
+  if any(word in content for word in ["夜里", "夜谈", "夜话"]):
+    tags.append("夜谈")
+  if any(word in content for word in ["私下", "私语", "相见"]):
+    tags.append("私下相见")
+  if any(word in content for word in ["规矩难守", "不合礼数", "失了分寸"]):
+    tags.append("越礼")
+  if "长辈不喜" in content:
+    tags.append("长辈不喜")
+  if "诗稿外传" in content:
+    tags.append("诗稿私传")
+  return tags
+
+
+def _rewrite_for_listener(rumor, listener_name):
+  if listener_name not in rumor.targets:
+    return rumor
+  content = rumor.content
+  prefix_match = re.match(r"(听说|有人说|都说|只怕|仿佛)", content)
+  prefix = prefix_match.group(1) if prefix_match else ""
+  body = content[len(prefix):] if prefix else content
+  match = re.search(r"(.+?)与(.+?)在", body)
+  if match:
+    left = match.group(1).strip()
+    right = match.group(2).strip()
+    other = right if listener_name in left else left
+    body = re.sub(r"^(.+?)与(.+?)在", f"你与{other}在", body, count=1)
+    content = f"{prefix}{body}"
+  else:
+    content = re.sub(r"^(听说|都说|只怕|有人说|仿佛)", r"\\1你", content, count=1)
+  content = world_sanitize(content)
+  content = _ensure_length(content)
+  return Rumor(
+    content,
+    rumor.origin,
+    rumor.credibility,
+    rumor.mutation_count,
+    rumor.targets,
+    _derive_taboo_tags(content),
+    rumor.timestamp,
+  )
+
+
+def prepare_rumor_for_listener(rumor, listener):
+  return _rewrite_for_listener(rumor, listener.name)
+
+
+def _consequence_state(persona):
+  if not hasattr(persona.scratch, "rumor_conseq"):
+    persona.scratch.rumor_conseq = {"guarded": 0, "shame": 0, "trust": 0}
+  return persona.scratch.rumor_conseq
+
+
+def apply_taboo_consequence(persona, rumor):
+  if not rumor.taboo_tags:
+    return None
+  state = _consequence_state(persona)
+  state["guarded"] += 1
+  state["shame"] += 1
+  state["trust"] -= 1
+
+  action = None
+  if "夜谈" in rumor.taboo_tags or "私下相见" in rumor.taboo_tags:
+    action = "暂避人前，少去热闹处"
+  elif "越礼" in rumor.taboo_tags:
+    action = "谨慎行止，少去人多处"
+  elif "长辈不喜" in rumor.taboo_tags:
+    action = "去长辈处请安，以解疑虑"
+  elif "诗稿私传" in rumor.taboo_tags:
+    action = "收拾诗稿，暂不外传"
+  return action
+
+
 def rumor_render(template, facts, tone, credibility, mutation_count):
   who = facts.get("who", "园中人")
   where = facts.get("where", "园中")
@@ -208,12 +285,11 @@ def maybe_generate_rumor(init_persona, target_persona, curr_loc, convo_summary):
   content = rumor_render("base", facts, _tone_for_persona(init_persona), 0.8, 0)
   credibility = max(0.3, 0.8 - _trigger_boost(content))
   targets = [init_persona.name, target_persona.name]
-  return Rumor(content, init_persona.name, credibility, 0, targets, timestamp)
+  taboo_tags = _derive_taboo_tags(content)
+  return Rumor(content, init_persona.name, credibility, 0, targets, taboo_tags, timestamp)
 
 
 def maybe_mutate_rumor(rumor, speaker=None):
-  if random.random() > 0.9:
-    return rumor
   facts = _extract_facts_from_content(rumor.content)
   content = rumor_render(
     "mutated",
@@ -223,7 +299,8 @@ def maybe_mutate_rumor(rumor, speaker=None):
     rumor.mutation_count + 1,
   )
   credibility = max(0.1, rumor.credibility - 0.1)
-  return Rumor(content, rumor.origin, credibility, rumor.mutation_count + 1, rumor.targets, rumor.timestamp)
+  taboo_tags = _derive_taboo_tags(content)
+  return Rumor(content, rumor.origin, credibility, rumor.mutation_count + 1, rumor.targets, taboo_tags, rumor.timestamp)
 
 
 def add_rumor_memory(persona, rumor):
@@ -263,10 +340,12 @@ def maybe_spread_rumor(speaker, listener):
     mutated.credibility,
     mutated.mutation_count,
     mutated.targets,
+    mutated.taboo_tags,
     mutated.timestamp,
   )
-  add_rumor_memory(listener, mutated)
-  return mutated
+  prepared = _rewrite_for_listener(mutated, listener.name)
+  add_rumor_memory(listener, prepared)
+  return prepared
 
 
 def spread_rumor_to_listener(rumor, speaker, listener):
@@ -277,10 +356,12 @@ def spread_rumor_to_listener(rumor, speaker, listener):
     mutated.credibility,
     mutated.mutation_count,
     mutated.targets,
+    mutated.taboo_tags,
     mutated.timestamp,
   )
-  add_rumor_memory(listener, mutated)
-  return mutated
+  prepared = _rewrite_for_listener(mutated, listener.name)
+  add_rumor_memory(listener, prepared)
+  return prepared
 
 
 def maybe_influence_action(persona, act_desp, act_dura):

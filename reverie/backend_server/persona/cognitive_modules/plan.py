@@ -893,13 +893,14 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
   created_rumor = rumor.maybe_generate_rumor(init_persona, target_persona,
                                              curr_loc_name, convo_summary)
   if created_rumor:
-    rumor.add_rumor_memory(target_persona, created_rumor)
+    created_for_target = rumor.prepare_rumor_for_listener(created_rumor, target_persona)
+    rumor.add_rumor_memory(target_persona, created_for_target)
     print(
       "RUMOR_CREATE "
       f"origin={created_rumor.origin} "
       f"to={target_persona.name} "
       f"mut={created_rumor.mutation_count} "
-      f"content={created_rumor.content}"
+      f"content={created_for_target.content}"
     )
     third_personas = [p for n, p in personas.items()
                       if n not in (init_persona.name, target_persona.name)]
@@ -925,6 +926,25 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
       f"mut={backfill_rumor.mutation_count} "
       f"content={backfill_rumor.content}"
     )
+    for affected in [target_persona, init_persona]:
+      consequence_action = rumor.apply_taboo_consequence(affected, created_rumor)
+      if consequence_action:
+        curr_index = affected.scratch.get_f_daily_schedule_index()
+        if curr_index < len(affected.scratch.f_daily_schedule):
+          curr_desp, curr_dura = affected.scratch.f_daily_schedule[curr_index]
+          act_desp = world_sanitize(consequence_action)
+          act_dura = min(curr_dura, 30)
+          affected.scratch.f_daily_schedule[curr_index] = [act_desp, act_dura]
+          rumor_content = world_sanitize(created_rumor.content)
+          tags = ",".join(created_rumor.taboo_tags)
+          print(
+            "CONSEQ_RUMOR "
+            f"persona={affected.name} "
+            f"tags={tags} "
+            f"rumor={rumor_content} "
+            f"action={act_desp}"
+          )
+
     curr_index = target_persona.scratch.get_f_daily_schedule_index()
     if curr_index < len(target_persona.scratch.f_daily_schedule):
       act_desp, act_dura = target_persona.scratch.f_daily_schedule[curr_index]
