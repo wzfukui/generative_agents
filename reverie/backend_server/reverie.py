@@ -39,6 +39,27 @@ from persona.persona import *
 #                                  REVERIE                                   #
 ##############################################################################
 
+def get_unique_sim_code(sim_code, storage_root=None):
+  if storage_root is None:
+    storage_root = fs_storage
+  storage_root = os.path.abspath(storage_root)
+  base_path = os.path.join(storage_root, sim_code)
+  if not os.path.exists(base_path):
+    return sim_code
+
+  timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+  candidate = f"{sim_code}_{timestamp}"
+  if not os.path.exists(os.path.join(storage_root, candidate)):
+    return candidate
+
+  suffix = 2
+  while True:
+    candidate = f"{sim_code}-{suffix}"
+    if not os.path.exists(os.path.join(storage_root, candidate)):
+      return candidate
+    suffix += 1
+
+
 class ReverieServer: 
   def __init__(self, 
                fork_sim_code,
@@ -53,7 +74,11 @@ class ReverieServer:
     # <sim_code> indicates our current simulation. The first step here is to 
     # copy everything that's in <fork_sim_code>, but edit its 
     # reverie/meta/json's fork variable. 
-    self.sim_code = sim_code
+    self.sim_code = get_unique_sim_code(sim_code)
+    if self.sim_code != sim_code:
+      print(f"Simulation name '{sim_code}' exists; using '{self.sim_code}'.")
+    else:
+      print(f"Using simulation name: {self.sim_code}")
     sim_folder = f"{fs_storage}/{self.sim_code}"
     copyanything(fork_folder, sim_folder)
 
@@ -611,7 +636,6 @@ if __name__ == '__main__':
 
   rs = ReverieServer(origin, target)
   rs.open_server()
-
 
 
 
