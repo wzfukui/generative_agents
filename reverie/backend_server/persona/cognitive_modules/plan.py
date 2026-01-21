@@ -15,6 +15,7 @@ from global_methods import *
 from persona.prompt_template.run_gpt_prompt import *
 from persona.cognitive_modules.retrieve import *
 from persona.cognitive_modules.converse import *
+from persona.cognitive_modules import rumor
 
 ##############################################################################
 # CHAPTER 2: Generate
@@ -617,6 +618,17 @@ def _determine_action(persona, maze):
 
   act_desp, act_dura = persona.scratch.f_daily_schedule[curr_index] 
 
+  rumor_action = rumor.maybe_influence_action(persona, act_desp, act_dura)
+  if rumor_action:
+    act_desp = rumor_action["act_description"]
+    act_dura = rumor_action["act_duration"]
+    print(
+      "RUMOR_DECISION "
+      f"persona={persona.name} "
+      f"rumor={rumor_action['rumor'].content} "
+      f"action={act_desp}"
+    )
+
 
 
   # Finding the target location of the action and creating action-related
@@ -869,6 +881,68 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
   convo_summary = generate_convo_summary(init_persona, convo)
   inserted_act = convo_summary
   inserted_act_dur = duration_min
+
+  curr_loc_name = ""
+  if init_persona.scratch.act_address:
+    parts = init_persona.scratch.act_address.split(":")
+    if len(parts) >= 2:
+      curr_loc_name = parts[1]
+
+  created_rumor = rumor.maybe_generate_rumor(init_persona, target_persona,
+                                             curr_loc_name, convo_summary)
+  if created_rumor:
+    rumor.add_rumor_memory(target_persona, created_rumor)
+    print(
+      "RUMOR_CREATE "
+      f"origin={created_rumor.origin} "
+      f"to={target_persona.name} "
+      f"mut={created_rumor.mutation_count} "
+      f"content={created_rumor.content}"
+    )
+    third_personas = [p for n, p in personas.items()
+                      if n not in (init_persona.name, target_persona.name)]
+    if third_personas:
+      third_persona = random.choice(third_personas)
+      chained_rumor = rumor.spread_rumor_to_listener(created_rumor,
+                                                     target_persona,
+                                                     third_persona)
+      print(
+        "RUMOR_SPREAD "
+        f"from={target_persona.name} "
+        f"to={third_persona.name} "
+        f"mut={chained_rumor.mutation_count} "
+        f"content={chained_rumor.content}"
+      )
+    backfill_rumor = rumor.spread_rumor_to_listener(created_rumor,
+                                                    target_persona,
+                                                    init_persona)
+    print(
+      "RUMOR_SPREAD "
+      f"from={target_persona.name} "
+      f"to={init_persona.name} "
+      f"mut={backfill_rumor.mutation_count} "
+      f"content={backfill_rumor.content}"
+    )
+
+  spread_rumor = rumor.maybe_spread_rumor(init_persona, target_persona)
+  if spread_rumor:
+    print(
+      "RUMOR_SPREAD "
+      f"from={init_persona.name} "
+      f"to={target_persona.name} "
+      f"mut={spread_rumor.mutation_count} "
+      f"content={spread_rumor.content}"
+    )
+
+  spread_back = rumor.maybe_spread_rumor(target_persona, init_persona)
+  if spread_back:
+    print(
+      "RUMOR_SPREAD "
+      f"from={target_persona.name} "
+      f"to={init_persona.name} "
+      f"mut={spread_back.mutation_count} "
+      f"content={spread_back.content}"
+    )
 
   act_start_time = target_persona.scratch.act_start_time
 
