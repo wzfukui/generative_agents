@@ -53,6 +53,23 @@ def run_gpt_prompt_wake_up_hour(persona, test_input=None, verbose=False):
                     persona.scratch.get_str_firstname()]
     return prompt_input
 
+  seed_events = []
+
+  def _extract_seed_events(event_block):
+    events = []
+    for line in event_block.splitlines():
+      line = line.strip()
+      if not line or line == "-- (none)":
+        continue
+      if line.startswith("-- "):
+        line = line[3:]
+      if line.startswith("This is"):
+        continue
+      if "曾" not in line:
+        continue
+      events.append(line)
+    return events
+
   def __func_clean_up(gpt_response, prompt=""):
     cr = int(gpt_response.strip().lower().split("am")[0])
     return cr
@@ -1528,6 +1545,30 @@ def run_gpt_prompt_create_conversation(persona, target_persona, curr_loc,
 
     prompt_input += [prev_convo_insert]
 
+    init_events = []
+    for node in init_persona.a_mem.seq_event[:50]:
+      if target_persona.name in node.description:
+        init_events.append(f"-- {node.description}")
+    if not init_events:
+      for node in init_persona.a_mem.seq_event[:50]:
+        if "曾" in node.description:
+          init_events.append(f"-- {node.description}")
+        if len(init_events) >= 8:
+          break
+
+    target_events = []
+    for node in target_persona.a_mem.seq_event[:50]:
+      if init_persona.name in node.description:
+        target_events.append(f"-- {node.description}")
+    if not target_events:
+      for node in target_persona.a_mem.seq_event[:50]:
+        if "曾" in node.description:
+          target_events.append(f"-- {node.description}")
+        if len(target_events) >= 8:
+          break
+    prompt_input += ["\n".join(init_events) or "-- (none)"]
+    prompt_input += ["\n".join(target_events) or "-- (none)"]
+
     prompt_input += [init_persona.name]
     prompt_input += [target_persona.name]
 
@@ -1553,6 +1594,19 @@ def run_gpt_prompt_create_conversation(persona, target_persona, curr_loc,
     for count, speaker in enumerate(speaker_order): 
       ret += [[speaker, content[count]]]
 
+    if seed_events:
+      has_seed = False
+      for _, utterance in ret:
+        for event in seed_events:
+          if event in utterance:
+            has_seed = True
+            break
+        if has_seed:
+          break
+      if not has_seed and ret:
+        speaker, utterance = ret[-1]
+        ret[-1] = [speaker, f"{utterance} 记得{seed_events[0]}"]
+
     return ret
 
   def __func_validate(gpt_response, prompt=""): 
@@ -1577,6 +1631,9 @@ def run_gpt_prompt_create_conversation(persona, target_persona, curr_loc,
   prompt = generate_prompt(prompt_input, prompt_template)
 
   fail_safe = get_fail_safe(persona, target_persona)
+  seed_events = _extract_seed_events(prompt_input[12])
+  seed_events += _extract_seed_events(prompt_input[13])
+
   output = safe_generate_response(prompt, gpt_param, 5, fail_safe,
                                    __func_validate, __func_clean_up)
 
@@ -2916,11 +2973,6 @@ def run_gpt_generate_iterative_chat_utt(maze, init_persona, target_persona, retr
                "temperature": 0, "top_p": 1, "stream": False,
                "frequency_penalty": 0, "presence_penalty": 0, "stop": None}
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]
-
-
-
-
-
 
 
 

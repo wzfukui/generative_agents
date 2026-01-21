@@ -18,10 +18,13 @@ Variables:
 
 !<INPUT 11>! -- previous convo
 
-!<INPUT 12>! -- init_persona_name
-!<INPUT 13>! -- target_persona_name
-!<INPUT 14>! -- curr_location name
-!<INPUT 15>! -- init_persona_name
+!<INPUT 12>! -- init_persona relevant past events
+!<INPUT 13>! -- target_persona relevant past events
+
+!<INPUT 14>! -- init_persona_name
+!<INPUT 15>! -- target_persona_name
+!<INPUT 16>! -- curr_location name
+!<INPUT 17>! -- init_persona_name
 
 <commentblockmarker>###</commentblockmarker>
 We have two characters. 
@@ -42,6 +45,14 @@ Currently, it is !<INPUT 8>!
 -- !<INPUT 10>!
 !<INPUT 11>!
 
-!<INPUT 12>! and !<INPUT 13>! are in !<INPUT 14>!. What would they talk about now?
+Here are past events that may be relevant:
+!<INPUT 12>!
+!<INPUT 13>!
+In their conversation, they must explicitly refer to at least one of the
+past events listed above. Include a concrete detail (location name or action)
+from a past event so it is clear which event is referenced. If no past event
+is referenced, the response is invalid.
 
-!<INPUT 15>!: "
+!<INPUT 14>! and !<INPUT 15>! are in !<INPUT 16>!. What would they talk about now?
+
+!<INPUT 17>!: "

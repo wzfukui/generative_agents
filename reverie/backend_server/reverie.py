@@ -39,6 +39,42 @@ from persona.persona import *
 #                                  REVERIE                                   #
 ##############################################################################
 
+SEED_EMBEDDING_DIM = 1536
+SEED_EMBEDDING_EPS = 1e-6
+
+
+def _seed_keywords(seed_text, persona_name):
+  keywords = {persona_name}
+  for token in ["怡红院", "潇湘馆", "蘅芜苑", "稻香村", "沁芳亭",
+                "宝玉", "黛玉", "宝钗"]:
+    if token in seed_text:
+      keywords.add(token)
+  return keywords
+
+
+def _seed_embedding(seed_text):
+  import random
+  rnd = random.Random(hash(seed_text))
+  return [SEED_EMBEDDING_EPS + rnd.random() * SEED_EMBEDDING_EPS
+          for _ in range(SEED_EMBEDDING_DIM)]
+
+
+def load_history_seeds_no_llm(personas, seeds, curr_time):
+  created = curr_time - datetime.timedelta(days=7)
+  expiration = curr_time + datetime.timedelta(days=30)
+  for persona_name, seed in seeds:
+    persona = personas.get(persona_name)
+    if not persona:
+      continue
+    keywords = _seed_keywords(seed, persona_name)
+    embedding_pair = (seed, _seed_embedding(seed))
+    persona.a_mem.add_event(
+      created, expiration,
+      persona_name, "experienced", "event",
+      seed, keywords, 5, embedding_pair, None
+    )
+
+
 def get_unique_sim_code(sim_code, storage_root=None):
   if storage_root is None:
     storage_root = fs_storage
@@ -161,8 +197,6 @@ class ReverieServer:
     if history_init:
       history_path = os.path.join(maze_assets_loc, history_init)
       if os.path.exists(history_path):
-        for persona in self.personas.values():
-          persona.scratch.curr_time = self.curr_time
         rows = read_file_to_list(history_path, header=True,
                                  strip_trail=True)[1]
         clean_whispers = []
@@ -172,10 +206,9 @@ class ReverieServer:
           for whisper in whispers:
             if whisper:
               clean_whispers += [[agent_name, whisper]]
-        load_history_via_whisper(self.personas, clean_whispers)
-        for persona in self.personas.values():
-          persona.scratch.curr_time = None
-        print(f"Loaded history seeds from {history_init}.")
+        load_history_seeds_no_llm(self.personas, clean_whispers,
+                                  self.curr_time)
+        print(f"Loaded history seeds (no LLM) from {history_init}.")
       else:
         print(f"History seed file not found: {history_init}")
 
@@ -658,7 +691,6 @@ if __name__ == '__main__':
 
   rs = ReverieServer(origin, target)
   rs.open_server()
-
 
 
 

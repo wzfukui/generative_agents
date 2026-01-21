@@ -1,17 +1,17 @@
 {
   "贾宝玉": {
-    "maze": "the_ville",
     "x": 72,
-    "y": 14
+    "y": 14,
+    "maze": "the_ville"
   },
   "林黛玉": {
-    "maze": "the_ville",
-    "x": 126,
-    "y": 46
+    "x": 72,
+    "y": 14,
+    "maze": "the_ville"
   },
   "薛宝钗": {
-    "maze": "the_ville",
-    "x": 123,
-    "y": 57
+    "x": 72,
+    "y": 14,
+    "maze": "the_ville"
   }
 }

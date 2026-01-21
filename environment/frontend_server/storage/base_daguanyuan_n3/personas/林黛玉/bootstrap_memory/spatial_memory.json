@@ -2,66 +2,64 @@
   "the Ville": {
     "Hobbs Cafe": {
       "cafe": [
-        "茶几",
-        "座椅",
-        "灶台",
-        "水缸",
-        "琴案"
+        "refrigerator",
+        "cafe customer seating",
+        "cooking area",
+        "kitchen sink",
+        "behind the cafe counter",
+        "piano"
       ]
     },
     "Isabella Rodriguez's apartment": {
       "main room": [
-        "床榻",
-        "书案",
-        "香几",
-        "衣柜",
-        "书架"
+        "bed",
+        "desk",
+        "refrigerator",
+        "closet",
+        "shelf"
       ]
     },
     "The Rose and Crown Pub": {
       "pub": [
-        "床榻",
-        "书案",
-        "妆奁",
-        "衣柜",
-        "花架"
+        "shelf",
+        "refrigerator",
+        "bar customer seating",
+        "behind the bar counter",
+        "kitchen sink",
+        "cooking area",
+        "microphone"
       ]
     },
     "Harvey Oak Supply Store": {
       "supply store": [
-        "灶台",
-        "水缸",
-        "案几",
-        "米缸",
-        "柴篓"
+        "supply store product shelf",
+        "behind the supply store counter",
+        "supply store counter"
       ]
     },
     "The Willows Market and Pharmacy": {
       "store": [
-        "灶台",
-        "案几",
-        "水缸",
-        "食盒",
-        "茶具"
+        "behind the pharmacy counter",
+        "pharmacy store shelf",
+        "pharmacy store counter",
+        "grocery store shelf",
+        "behind the grocery counter",
+        "grocery store counter"
       ]
     },
     "Dorm for Oak Hill College": {
       "garden": [
-        "竹影",
-        "石径",
-        "苔阶"
+        "dorm garden"
       ],
       "common room": [
-        "床榻",
-        "石桌",
-        "石灯"
+        "common room sofa",
+        "pool table",
+        "common room table"
       ]
     },
     "Johnson Park": {
       "park": [
-        "石桌",
-        "石凳",
-        "荷池"
+        "park garden"
       ]
     }
   }
