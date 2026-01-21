@@ -16,6 +16,7 @@ from persona.prompt_template.run_gpt_prompt import *
 from persona.cognitive_modules.retrieve import *
 from persona.cognitive_modules.converse import *
 from persona.cognitive_modules import rumor
+from text_sanitize import world_sanitize
 
 ##############################################################################
 # CHAPTER 2: Generate
@@ -620,12 +621,13 @@ def _determine_action(persona, maze):
 
   rumor_action = rumor.maybe_influence_action(persona, act_desp, act_dura)
   if rumor_action:
-    act_desp = rumor_action["act_description"]
+    act_desp = world_sanitize(rumor_action["act_description"])
     act_dura = rumor_action["act_duration"]
+    rumor_content = world_sanitize(rumor_action["rumor"].content)
     print(
       "RUMOR_DECISION "
       f"persona={persona.name} "
-      f"rumor={rumor_action['rumor'].content} "
+      f"rumor={rumor_content} "
       f"action={act_desp}"
     )
 

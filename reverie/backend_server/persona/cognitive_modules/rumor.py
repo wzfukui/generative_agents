@@ -3,6 +3,7 @@ import random
 import re
 from dataclasses import dataclass
 
+from text_sanitize import world_sanitize
 SEED_EMBEDDING_DIM = 1536
 
 LOCATION_ALIAS = {
@@ -128,6 +129,7 @@ def maybe_generate_rumor(init_persona, target_persona, curr_loc, convo_summary):
   topic = _extract_topic(convo_summary)
   location = _location_phrase(curr_loc)
   content = f"{init_persona.name}与{target_persona.name}在{location}似乎提到{topic}"
+  content = world_sanitize(content)
   credibility = max(0.3, 0.8 - _trigger_boost(content))
   targets = [init_persona.name, target_persona.name]
   return Rumor(content, init_persona.name, credibility, 0, targets, timestamp)
@@ -137,12 +139,13 @@ def maybe_mutate_rumor(rumor):
   if random.random() > 0.9:
     return rumor
   content = _mutate_content(rumor.content)
+  content = world_sanitize(content)
   credibility = max(0.1, rumor.credibility - 0.1)
   return Rumor(content, rumor.origin, credibility, rumor.mutation_count + 1, rumor.targets, rumor.timestamp)
 
 
 def add_rumor_memory(persona, rumor):
-  description = rumor.to_memory_description()
+  description = world_sanitize(rumor.to_memory_description())
   keywords = _keywords_from_content(rumor.content)
   keywords += ["流言", "听闻"]
   embedding_pair = (description, _seed_embedding(description))
@@ -172,12 +175,28 @@ def maybe_spread_rumor(speaker, listener):
   if random.random() > min(prob, 0.6):
     return None
   mutated = maybe_mutate_rumor(rumor)
+  mutated = Rumor(
+    world_sanitize(mutated.content),
+    mutated.origin,
+    mutated.credibility,
+    mutated.mutation_count,
+    mutated.targets,
+    mutated.timestamp,
+  )
   add_rumor_memory(listener, mutated)
   return mutated
 
 
 def spread_rumor_to_listener(rumor, speaker, listener):
   mutated = maybe_mutate_rumor(rumor)
+  mutated = Rumor(
+    world_sanitize(mutated.content),
+    mutated.origin,
+    mutated.credibility,
+    mutated.mutation_count,
+    mutated.targets,
+    mutated.timestamp,
+  )
   add_rumor_memory(listener, mutated)
   return mutated
 
@@ -201,7 +220,7 @@ def maybe_influence_action(persona, act_desp, act_dura):
     return None
 
   alias, loc = chosen_loc
-  new_act_desp = f"去{alias}（{loc}）看看传闻的来处"
+  new_act_desp = world_sanitize(f"去{alias}（{loc}）看看传闻的来处")
   new_act_dura = min(30, act_dura)
   persona.scratch.rumor_influence_done = True
   return {
