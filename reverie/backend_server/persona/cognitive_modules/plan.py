@@ -6,7 +6,8 @@ Description: This defines the "Plan" module for generative agents.
 """
 import datetime
 import math
-import random 
+import os
+import random
 import sys
 import time
 sys.path.append('../../')
@@ -18,6 +19,68 @@ from persona.cognitive_modules.converse import *
 from persona.cognitive_modules import rumor
 from persona.cognitive_modules import scene
 from text_sanitize import world_sanitize
+
+CHAT_CONFIG = {
+  "pair_cooldown_minutes": int(os.getenv("CHAT_PAIR_COOLDOWN_MINUTES", "15")),
+  "buffer_steps": int(os.getenv("CHAT_BUFFER_STEPS", "15")),
+  "llm_calls_per_step": int(os.getenv("LLM_CALLS_PER_STEP", "6")),
+  "cache_window_minutes": int(os.getenv("CHAT_CACHE_WINDOW_MINUTES", "10")),
+}
+
+_LLM_BUDGET_STATE = {"ts": None, "remaining": 0}
+_CHAT_CACHE = {}
+_CHAT_CACHE_MAX = 200
+
+
+def _budget_key(curr_time):
+  return curr_time.strftime("%Y-%m-%d %H:%M")
+
+
+def _reset_llm_budget(curr_time):
+  key = _budget_key(curr_time)
+  if _LLM_BUDGET_STATE["ts"] != key:
+    _LLM_BUDGET_STATE["ts"] = key
+    _LLM_BUDGET_STATE["remaining"] = CHAT_CONFIG["llm_calls_per_step"]
+
+
+def _take_llm_budget(curr_time, cost=1):
+  _reset_llm_budget(curr_time)
+  if _LLM_BUDGET_STATE["remaining"] < cost:
+    return False
+  _LLM_BUDGET_STATE["remaining"] -= cost
+  return True
+
+
+def _chat_cache_key(init_name, target_name, curr_time):
+  window = max(1, CHAT_CONFIG["cache_window_minutes"])
+  minute_bucket = (curr_time.minute // window) * window
+  return (init_name, target_name, curr_time.strftime("%Y-%m-%d %H"), minute_bucket)
+
+
+def _chat_cache_get(init_name, target_name, curr_time):
+  return _CHAT_CACHE.get(_chat_cache_key(init_name, target_name, curr_time))
+
+
+def _chat_cache_set(init_name, target_name, curr_time, value):
+  if len(_CHAT_CACHE) >= _CHAT_CACHE_MAX:
+    _CHAT_CACHE.pop(next(iter(_CHAT_CACHE)))
+  _CHAT_CACHE[_chat_cache_key(init_name, target_name, curr_time)] = value
+
+
+def _chat_pair_cooldown_ok(init_persona, target_name, minutes):
+  if not hasattr(init_persona.scratch, "chat_pair_cooldowns"):
+    init_persona.scratch.chat_pair_cooldowns = {}
+  last_seen = init_persona.scratch.chat_pair_cooldowns.get(target_name)
+  if not last_seen:
+    return True
+  delta = init_persona.scratch.curr_time - last_seen
+  return delta.total_seconds() >= minutes * 60
+
+
+def _set_chat_pair_cooldown(persona, target_name):
+  if not hasattr(persona.scratch, "chat_pair_cooldowns"):
+    persona.scratch.chat_pair_cooldowns = {}
+  persona.scratch.chat_pair_cooldowns[target_name] = persona.scratch.curr_time
 
 ##############################################################################
 # CHAPTER 2: Generate
@@ -752,9 +815,13 @@ def _should_react(persona, retrieved, personas):
       if init_persona.scratch.chatting_with_buffer[target_persona.name] > 0: 
         return False
 
+    if not _chat_pair_cooldown_ok(init_persona, target_persona.name,
+                                  CHAT_CONFIG["pair_cooldown_minutes"]):
+      return f"defer chat with {target_persona.name}"
+
     if generate_decide_to_talk(init_persona, target_persona, retrieved): 
 
-      return True
+      return f"chat with {target_persona.name}"
 
     return False
 
@@ -810,8 +877,9 @@ def _should_react(persona, retrieved, personas):
 
   if ":" not in curr_event.subject: 
     # this is a persona event. 
-    if lets_talk(persona, personas[curr_event.subject], retrieved):
-      return f"chat with {curr_event.subject}"
+    talk_mode = lets_talk(persona, personas[curr_event.subject], retrieved)
+    if talk_mode:
+      return talk_mode
     react_mode = lets_react(persona, personas[curr_event.subject], 
                             retrieved)
     return react_mode
@@ -880,8 +948,41 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
   curr_personas = [init_persona, target_persona]
 
   # Actually creating the conversation here. 
-  convo, duration_min = generate_convo(maze, init_persona, target_persona)
-  convo_summary = generate_convo_summary(init_persona, convo)
+  cached = _chat_cache_get(init_persona.name, target_persona.name,
+                           init_persona.scratch.curr_time)
+  if cached:
+    convo = cached["convo"]
+    duration_min = cached["duration_min"]
+    convo_summary = cached["convo_summary"]
+    print(
+      "CHAT_CACHE_HIT "
+      f"pair={init_persona.name},{target_persona.name} "
+      f"bucket={_budget_key(init_persona.scratch.curr_time)}"
+    )
+  else:
+    if not _take_llm_budget(init_persona.scratch.curr_time, cost=1):
+      print(
+        "BUDGET_HIT "
+        f"persona={init_persona.name} "
+        f"target={target_persona.name} "
+        f"bucket={_budget_key(init_persona.scratch.curr_time)}"
+      )
+      print(
+        "DEFER_CHAT "
+        f"reason=budget "
+        f"persona={init_persona.name} "
+        f"target={target_persona.name}"
+      )
+      return False
+    convo, duration_min = generate_convo(maze, init_persona, target_persona)
+    convo_summary = generate_convo_summary(init_persona, convo)
+    _chat_cache_set(init_persona.name, target_persona.name,
+                    init_persona.scratch.curr_time,
+                    {
+                      "convo": convo,
+                      "duration_min": duration_min,
+                      "convo_summary": convo_summary,
+                    })
   inserted_act = convo_summary
   inserted_act_dur = duration_min
 
@@ -893,19 +994,18 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
 
   created_rumor = rumor.maybe_generate_rumor(init_persona, target_persona,
                                              curr_loc_name, convo_summary)
-  scene_events = scene.maybe_trigger_scene(init_persona, target_persona,
-                                           curr_loc_name, convo_summary)
-  if scene_events:
-    for scene_event in scene_events:
-      for participant in [init_persona, target_persona]:
-        scene.add_scene_memory(participant, scene_event)
-      print(
-        "SCENE_TRIGGER "
-        f"type={scene_event.scene_type} "
-        f"loc={scene_event.location} "
-        f"who={','.join(scene_event.participants)} "
-        f"summary={scene_event.summary}"
-      )
+  scene_event = scene.maybe_trigger_scene(init_persona, target_persona,
+                                          curr_loc_name, convo_summary)
+  if scene_event:
+    for participant in [init_persona, target_persona]:
+      scene.add_scene_memory(participant, scene_event)
+    print(
+      "SCENE_TRIGGER "
+      f"type={scene_event.scene_type} "
+      f"loc={scene_event.location} "
+      f"who={','.join(scene_event.participants)} "
+      f"summary={scene_event.summary}"
+    )
   if created_rumor:
     created_for_target = rumor.prepare_rumor_for_listener(created_rumor, target_persona)
     rumor.add_rumor_memory(target_persona, created_for_target)
@@ -1010,13 +1110,13 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
       act_event = (p.name, "chat with", target_persona.name)
       chatting_with = target_persona.name
       chatting_with_buffer = {}
-      chatting_with_buffer[target_persona.name] = 800
+      chatting_with_buffer[target_persona.name] = CHAT_CONFIG["buffer_steps"]
     elif role == "target": 
       act_address = f"<persona> {init_persona.name}"
       act_event = (p.name, "chat with", init_persona.name)
       chatting_with = init_persona.name
       chatting_with_buffer = {}
-      chatting_with_buffer[init_persona.name] = 800
+      chatting_with_buffer[init_persona.name] = CHAT_CONFIG["buffer_steps"]
 
     act_pronunciatio = "💬" 
     act_obj_description = None
@@ -1027,6 +1127,9 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
       act_address, act_event, chatting_with, convo, chatting_with_buffer, chatting_end_time,
       act_pronunciatio, act_obj_description, act_obj_pronunciatio, 
       act_obj_event, act_start_time)
+  _set_chat_pair_cooldown(init_persona, target_persona.name)
+  _set_chat_pair_cooldown(target_persona, init_persona.name)
+  return True
 
 
 def _wait_react(persona, reaction_mode): 
@@ -1108,6 +1211,14 @@ def plan(persona, maze, personas, new_day, retrieved):
       # If we do want to chat, then we generate conversation 
       if reaction_mode[:9] == "chat with":
         _chat_react(maze, persona, focused_event, reaction_mode, personas)
+      elif reaction_mode[:14] == "defer chat with":
+        target_name = reaction_mode[15:].strip()
+        print(
+          "DEFER_CHAT "
+          "reason=pair_cooldown "
+          f"persona={persona.name} "
+          f"target={target_name}"
+        )
       elif reaction_mode[:4] == "wait": 
         _wait_react(persona, reaction_mode)
       # elif reaction_mode == "do other things": 
